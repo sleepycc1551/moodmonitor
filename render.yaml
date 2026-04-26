@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: moodwatch-next-prototype
+    runtime: node
+    plan: free
+    autoDeploy: true
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 24.15.0
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: NEXT_PUBLIC_SHOW_FACILITATOR_TOOLS
+        value: "false"
