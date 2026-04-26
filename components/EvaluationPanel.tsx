@@ -66,6 +66,16 @@ export function EvaluationPanel({
     );
   }
 
+  function resetSubmittedJudgments() {
+    if (
+      window.confirm(
+        `Reset all ${jatSubmissions.length} submitted test judgments? This keeps patient data but clears tester judgments.`,
+      )
+    ) {
+      onResetJATSubmissions();
+    }
+  }
+
   return (
     <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-3">
@@ -152,10 +162,11 @@ export function EvaluationPanel({
         </button>
         <button
           type="button"
-          onClick={onResetJATSubmissions}
-          className="inline-flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+          disabled={jatSubmissions.length === 0}
+          onClick={resetSubmittedJudgments}
+          className="inline-flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
         >
-          Reset test submissions
+          Reset all submitted test judgments
         </button>
         <button
           type="button"

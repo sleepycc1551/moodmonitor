@@ -226,14 +226,14 @@ export function ClinicianApp({
         <button
           type="button"
           onClick={returnToDashboard}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-sky-400 hover:bg-sky-50"
+          className="sticky top-3 z-30 inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white/95 px-4 py-3 text-sm font-medium text-slate-700 shadow-lg shadow-slate-200/70 backdrop-blur transition hover:border-sky-400 hover:bg-sky-50"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Clinician Dashboard
         </button>
 
         <PatientDetail
-          key={detailPatient.profile.id}
+          key={`${detailPatient.profile.id}-${aiEnabled ? "ai-on" : "ai-off"}`}
           aiEnabled={aiEnabled}
           onApproveAppointment={(requestId) =>
             onApproveAppointment(detailPatient.profile.id, requestId)
@@ -252,6 +252,7 @@ export function ClinicianApp({
           onReviewAppointmentRequest={(requestId) =>
             onReviewAppointmentRequest(detailPatient.profile.id, requestId)
           }
+          onResetJATSubmissions={onResetJATSubmissions}
           onSendSupportiveMessage={(message) =>
             onSendSupportiveMessage(detailPatient.profile.id, message)
           }
@@ -267,6 +268,7 @@ export function ClinicianApp({
             .filter((submission) => submission.patientId === detailPatient.profile.id)
             .sort((left, right) => left.submittedAt.localeCompare(right.submittedAt))
             .at(-1)}
+          testSubmissionCount={jatSubmissions.length}
         />
       </div>
     );

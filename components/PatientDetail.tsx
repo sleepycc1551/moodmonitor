@@ -68,6 +68,7 @@ interface PatientDetailProps {
   onRequestAppointmentInfo: (requestId: string) => void;
   onRequestFollowUpCheckIn: () => void;
   onReviewAppointmentRequest: (requestId: string) => void;
+  onResetJATSubmissions: () => void;
   onSendSupportiveMessage: (message: string) => void;
   onSubmitJATJudgment: (input: {
     agreedWithAI: boolean;
@@ -82,6 +83,7 @@ interface PatientDetailProps {
   detailOpenedAt: number;
   latestJATSubmission?: JATTesterSubmission;
   patient: PatientRecord;
+  testSubmissionCount: number;
 }
 
 type TrendDefinition = {
@@ -127,11 +129,13 @@ export function PatientDetail({
   onRequestAppointmentInfo,
   onRequestFollowUpCheckIn,
   onReviewAppointmentRequest,
+  onResetJATSubmissions,
   onSendSupportiveMessage,
   onSubmitJATJudgment,
   detailOpenedAt,
   latestJATSubmission,
   patient,
+  testSubmissionCount,
 }: PatientDetailProps) {
   const [activeModal, setActiveModal] = useState<"message" | "override" | "escalate" | null>(
     null,
@@ -148,12 +152,14 @@ export function PatientDetail({
   const [overrideNote, setOverrideNote] = useState("");
   const [showGroundTruth, setShowGroundTruth] = useState(false);
   const [showSharedNote, setShowSharedNote] = useState(false);
-  const [testerConcernScore, setTesterConcernScore] = useState(() =>
-    getConcernScore(patient.latestRisk),
+  const [testerConcernScore, setTesterConcernScore] = useState<number | null>(() =>
+    aiEnabled ? getConcernScore(patient.latestRisk) : null,
   );
-  const [testerAction, setTesterAction] = useState<JATTesterAction>("monitor");
+  const [testerAction, setTesterAction] = useState<JATTesterAction | "">(
+    aiEnabled ? "monitor" : "",
+  );
   const [testerConfidence, setTesterConfidence] = useState(6);
-  const [agreedWithAI, setAgreedWithAI] = useState(true);
+  const [agreedWithAI, setAgreedWithAI] = useState(aiEnabled);
   const [testerNote, setTesterNote] = useState("");
   const [viewedPanels, setViewedPanels] = useState<string[]>([]);
 
@@ -175,6 +181,7 @@ export function PatientDetail({
   const phoneBehaviorInsights = useMemo(() => buildPhoneBehaviorInsights(patient), [patient]);
   const sharingNotes = useMemo(() => summarizeSharingAccess(patient), [patient]);
   const actionStatus = getActionStatus(patient);
+  const canSubmitTestJudgment = testerConcernScore !== null && testerAction !== "";
 
   function trackPanel(panelId: string) {
     if (viewedPanels.includes(panelId)) return;
@@ -829,13 +836,18 @@ export function PatientDetail({
 
           <TestJudgmentPanel
             agreedWithAI={agreedWithAI}
+            aiEnabled={aiEnabled}
+            canSubmit={canSubmitTestJudgment}
             detailOpenedAt={detailOpenedAt}
             latestSubmission={latestJATSubmission}
             onAgreeWithAIChange={setAgreedWithAI}
             onConfidenceChange={setTesterConfidence}
             onConcernScoreChange={setTesterConcernScore}
             onNoteChange={setTesterNote}
-            onSubmit={() =>
+            onResetAllSubmissions={onResetJATSubmissions}
+            onSubmit={() => {
+              if (!canSubmitTestJudgment) return;
+
               onSubmitJATJudgment({
                 agreedWithAI,
                 openedDetailView: true,
@@ -845,13 +857,14 @@ export function PatientDetail({
                 testerNote: testerNote.trim() || undefined,
                 timeToDecisionMs: Math.max(0, Date.now() - detailOpenedAt),
                 viewedPanels,
-              })
-            }
+              });
+            }}
             onTesterActionChange={setTesterAction}
             testerAction={testerAction}
             testerConfidence={testerConfidence}
             testerConcernScore={testerConcernScore}
             testerNote={testerNote}
+            totalSubmissionCount={testSubmissionCount}
           />
 
           {showFacilitatorTools ? (
@@ -1191,33 +1204,48 @@ function SignalList({
 
 function TestJudgmentPanel({
   agreedWithAI,
+  aiEnabled,
+  canSubmit,
   detailOpenedAt,
   latestSubmission,
   onAgreeWithAIChange,
   onConfidenceChange,
   onConcernScoreChange,
   onNoteChange,
+  onResetAllSubmissions,
   onSubmit,
   onTesterActionChange,
   testerAction,
   testerConfidence,
   testerConcernScore,
   testerNote,
+  totalSubmissionCount,
 }: {
   agreedWithAI: boolean;
+  aiEnabled: boolean;
+  canSubmit: boolean;
   detailOpenedAt: number;
   latestSubmission?: JATTesterSubmission;
   onAgreeWithAIChange: (value: boolean) => void;
   onConfidenceChange: (value: number) => void;
-  onConcernScoreChange: (value: number) => void;
+  onConcernScoreChange: (value: number | null) => void;
   onNoteChange: (value: string) => void;
+  onResetAllSubmissions: () => void;
   onSubmit: () => void;
-  onTesterActionChange: (value: JATTesterAction) => void;
-  testerAction: JATTesterAction;
+  onTesterActionChange: (value: JATTesterAction | "") => void;
+  testerAction: JATTesterAction | "";
   testerConfidence: number;
-  testerConcernScore: number;
+  testerConcernScore: number | null;
   testerNote: string;
+  totalSubmissionCount: number;
 }) {
+  const testerConcernLabel =
+    testerConcernScore === null
+      ? "Not selected"
+      : `${testerConcernScore}/10 - ${formatConcernLabel(
+          concernLevelFromScore(testerConcernScore),
+        )}`;
+
   return (
     <SectionCard icon={<FlaskConical className="h-4 w-4 text-emerald-700" />} title="Submit test judgment">
       <div className="rounded-2xl bg-slate-50 p-3 text-sm leading-6 text-slate-600">
@@ -1227,28 +1255,41 @@ function TestJudgmentPanel({
       <div className="mt-4 space-y-4">
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">
-            Tester concern score: {testerConcernScore}/10 -{" "}
-            {formatConcernLabel(concernLevelFromScore(testerConcernScore))}
+            Tester concern score: {testerConcernLabel}
           </label>
-          <input
-            max={10}
-            min={1}
-            type="range"
-            value={testerConcernScore}
-            onChange={(event) => onConcernScoreChange(Number(event.target.value))}
-            className="w-full accent-sky-600"
-          />
           <select
-            value={testerConcernScore}
-            onChange={(event) => onConcernScoreChange(Number(event.target.value))}
-            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-sky-500"
+            value={testerConcernScore ?? ""}
+            onChange={(event) =>
+              onConcernScoreChange(
+                event.target.value ? Number(event.target.value) : null,
+              )
+            }
+            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-sky-500"
           >
+            <option value="" disabled>
+              Select concern score
+            </option>
             {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
               <option key={score} value={score}>
                 {score} - {formatConcernLabel(concernLevelFromScore(score))}
               </option>
             ))}
           </select>
+          {testerConcernScore !== null ? (
+            <input
+              max={10}
+              min={1}
+              type="range"
+              value={testerConcernScore}
+              onChange={(event) => onConcernScoreChange(Number(event.target.value))}
+              className="mt-3 w-full accent-sky-600"
+            />
+          ) : null}
+          {!aiEnabled ? (
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              AI assistance is off, so no AI score is preselected.
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -1257,15 +1298,25 @@ function TestJudgmentPanel({
           </label>
           <select
             value={testerAction}
-            onChange={(event) => onTesterActionChange(event.target.value as JATTesterAction)}
+            onChange={(event) =>
+              onTesterActionChange(event.target.value as JATTesterAction | "")
+            }
             className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-sky-500"
           >
+            <option value="" disabled>
+              Select action
+            </option>
             {testerActions.map((action) => (
               <option key={action} value={action}>
                 {formatTesterAction(action)}
               </option>
             ))}
           </select>
+          {!aiEnabled ? (
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              Choose the action manually after reviewing the shared data.
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -1282,15 +1333,22 @@ function TestJudgmentPanel({
           />
         </div>
 
-        <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={agreedWithAI}
-            onChange={(event) => onAgreeWithAIChange(event.target.checked)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          Agree with AI estimate
-        </label>
+        {aiEnabled ? (
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={agreedWithAI}
+              onChange={(event) => onAgreeWithAIChange(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Agree with AI estimate
+          </label>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            AI assistance is off. Agreement with AI will be recorded as no for this
+            judgment.
+          </div>
+        )}
 
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">
@@ -1307,9 +1365,10 @@ function TestJudgmentPanel({
         <button
           type="button"
           onClick={onSubmit}
-          className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white"
+          disabled={!canSubmit}
+          className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
         >
-          Submit test judgment
+          {canSubmit ? "Submit test judgment" : "Select score and action to submit"}
         </button>
 
         {latestSubmission ? (
@@ -1326,6 +1385,23 @@ function TestJudgmentPanel({
             Decision timer started when this detail view opened.
           </div>
         ) : null}
+
+        <button
+          type="button"
+          disabled={totalSubmissionCount === 0}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Reset all ${totalSubmissionCount} submitted test judgments? This will keep patient data but clear tester judgments.`,
+              )
+            ) {
+              onResetAllSubmissions();
+            }
+          }}
+          className="w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+        >
+          Reset all submitted test judgments
+        </button>
       </div>
     </SectionCard>
   );
